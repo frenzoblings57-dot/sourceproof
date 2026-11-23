@@ -42,9 +42,9 @@ python3 -m unittest discover -s tests -v
 
 ## Pocket service
 
-Proposed Pocket service ID: `sourceproof`
+Pocket service ID selected for registration: `sourceproof`. The validated metadata card is [`service-card.json`](./service-card.json), and the deployment checklist is [`POCKET.md`](./POCKET.md).
 
-The service is designed to run behind a Pocket RelayMiner as a stateless REST backend. The repository includes the OpenAPI contract and a health endpoint for supplier verification. Pocket registration and supplier staking are intentionally separate operational steps and should be performed only after the deployment endpoint has been tested.
+The service is designed to run behind a Pocket HA RelayMiner as a stateless REST backend. The repository includes the OpenAPI contract, identity/version endpoint, health endpoint, and functional probe required for supplier verification. Pocket registration and supplier staking remain separate operational steps and require a funded Beta TestNet owner/operator wallet.
 
 ## License
 

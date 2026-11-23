@@ -1,0 +1,53 @@
+{
+  "schema": "pocket-service-card/v1",
+  "description": "SourceProof verifies a factual claim against supplied current web pages. POST JSON to /v1/verify with claim and 1-10 HTTP(S) source URLs; returns a JSON verdict (supported, contradicted, partially_supported, or insufficient_evidence), confidence, citation snippets, retrieval timestamps, and per-source errors. Identical inputs produce deterministic verdict logic, while timestamps and live source content may change.",
+  "rpc_types": [
+    {
+      "type": "REST",
+      "intent": "expected",
+      "backend_hint": "SourceProof HTTP server on :8080; mount at /",
+      "notes": "Only GET /, GET /v1/version, GET /health, GET /openapi.json, and POST /v1/verify are expected. Every response is a JSON object."
+    }
+  ],
+  "apis": ["sourceproof-api"],
+  "specs": [
+    {
+      "kind": "openapi",
+      "api": "sourceproof-api",
+      "url": "https://raw.githubusercontent.com/frenzoblings57-dot/sourceproof/main/openapi.json",
+      "notes": "Version-addressed repository branch URL for the public OpenAPI contract."
+    }
+  ],
+  "access": "public",
+  "results": "variable",
+  "serving": {
+    "backend": "The sourceproof container behind a Pocket HA RelayMiner with the REST backend pointed at port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
+    "implementations": ["sourceproof >= 0.1.0"],
+    "docs": "https://github.com/frenzoblings57-dot/sourceproof#readme",
+    "min_disk_gb": 1,
+    "min_ram_gb": 1,
+    "healthcheck": [
+      {
+        "rpc_type": "REST",
+        "request": {"path": "/v1/version", "method": "GET"},
+        "expect": {"json_path": "$.service", "matches": "^sourceproof$"},
+        "notes": "Identity probe pins the backend to SourceProof."
+      },
+      {
+        "rpc_type": "REST",
+        "request": {"path": "/health", "method": "GET"},
+        "expect": {"json_path": "$.status", "matches": "^ok$"},
+        "notes": "Readiness probe."
+      },
+      {
+        "rpc_type": "REST",
+        "request": {"path": "/v1/verify", "method": "POST", "body": {"claim": "Pocket Network", "sources": ["https://docs.pokt.network/"]}},
+        "expect": {"json_path": "$.service", "matches": "^SourceProof$"},
+        "notes": "Cheap functional probe; the source is public and the response includes a JSON verdict."
+      }
+    ],
+    "notes": "Suppliers should allow the RelayMiner to reach the backend, use a request timeout of at least 15 seconds for upstream page fetches, and apply external rate limiting for public production traffic."
+  },
+  "docs": "https://github.com/frenzoblings57-dot/sourceproof#api",
+  "updated": "2026-11-23"
+}

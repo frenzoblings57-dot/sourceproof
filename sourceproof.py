@@ -195,9 +195,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self.send_json(200, {"ok": True, "service": "SourceProof", "version": VERSION})
+            return self.send_json(200, {"status": "ok", "service": "sourceproof", "version": VERSION})
+        if self.path == "/v1/version":
+            return self.send_json(200, {"service": "sourceproof", "version": VERSION})
         if self.path == "/":
-            return self.send_json(200, {"service": "SourceProof", "operation": "POST /v1/verify", "docs": "/openapi.json"})
+            return self.send_json(200, {"service": "sourceproof", "name": "SourceProof", "operation": "POST /v1/verify", "docs": "/openapi.json"})
         if self.path == "/openapi.json":
             try:
                 with open("openapi.json", "rb") as handle:
