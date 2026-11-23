@@ -1,0 +1,5 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY sourceproof.py openapi.json README.md ./
+EXPOSE 8080
+CMD ["python3", "sourceproof.py", "--host", "0.0.0.0", "--port", "8080"]

@@ -1,0 +1,51 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "SourceProof",
+    "version": "0.1.0",
+    "description": "Verify a claim against current web sources and return citation snippets and a machine-readable verdict."
+  },
+  "servers": [{"url": "https://{host}", "variables": {"host": {"default": "localhost"}}}],
+  "paths": {
+    "/health": {"get": {"operationId": "health", "responses": {"200": {"description": "Healthy"}}}},
+    "/v1/verify": {
+      "post": {
+        "operationId": "verifyOfficialClaim",
+        "summary": "Verify a claim against official or supplied web sources",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyRequest"}}}},
+        "responses": {
+          "200": {"description": "Verification result", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyResponse"}}}},
+          "400": {"description": "Invalid request"}
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "VerifyRequest": {
+        "type": "object",
+        "required": ["claim", "sources"],
+        "additionalProperties": false,
+        "properties": {
+          "claim": {"type": "string", "maxLength": 1000, "description": "The factual claim to check."},
+          "sources": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "format": "uri"}, "description": "HTTP(S) pages to inspect."}
+        }
+      },
+      "VerifyResponse": {
+        "type": "object",
+        "required": ["claim", "verdict", "confidence", "evidence"],
+        "properties": {
+          "service": {"type": "string", "example": "SourceProof"},
+          "version": {"type": "string"},
+          "claim": {"type": "string"},
+          "verdict": {"type": "string", "enum": ["supported", "contradicted", "partially_supported", "insufficient_evidence"]},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence": {"type": "array", "items": {"type": "object"}},
+          "source_errors": {"type": "array", "items": {"type": "object"}},
+          "retrieved_at": {"type": "string", "format": "date-time"},
+          "method": {"type": "string"}
+        }
+      }
+    }
+  }
+}
