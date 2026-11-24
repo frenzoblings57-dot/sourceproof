@@ -3,7 +3,7 @@
     200,
     {
       "service": "sourceproof",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ],
   "health": [
@@ -11,14 +11,14 @@
     {
       "status": "ok",
       "service": "sourceproof",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ],
   "verification": [
     200,
     {
       "service": "SourceProof",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "claim": "Pocket Network is an open network for data services for AI agents",
       "verdict": "supported",
       "confidence": 0.8,
@@ -40,12 +40,12 @@
             "services"
           ],
           "coverage": 1.0,
-          "quote": "Pocket Network Docs Docs GitHub Discord \u2600 Light \u263d Dark Documentation Get Started About Pocket Network Networks Provider Quickstart Agent Services Overview New Agent Integration New Blockchain Data for Agents New List Your Service New pocketd CLI Overview Accounts, Keys & Fees Querying the Chain Staking & Transactions Ansible Automations Overview Beginner Dep",
-          "retrieved_at": "2026-11-23T10:58:47Z"
+          "quote": "Pocket Network Docs Docs GitHub Discord ☀ Light ☽ Dark Documentation Get Started About Pocket Network Networks Provider Quickstart Agent Services Overview New Agent Integration New Blockchain Data for Agents New List Your Service New pocketd CLI Overview Accounts, Keys & Fees Querying the Chain Staking & Transactions Ansible Automations Overview Beginner Dep",
+          "retrieved_at": "2026-11-24T03:58:02Z"
         }
       ],
       "source_errors": [],
-      "retrieved_at": "2026-11-23T10:58:47Z",
+      "retrieved_at": "2026-11-24T03:58:02Z",
       "method": "keyword coverage with citation snippets; not a substitute for human review"
     }
   ]

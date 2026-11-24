@@ -9,40 +9,68 @@
       "notes": "Only GET and HEAD on /, GET /v1/version, GET and HEAD on /health, GET and HEAD on /openapi.json, and POST /v1/verify are expected. Every response is a JSON object."
     }
   ],
-  "apis": ["sourceproof-api"],
+  "apis": [
+    "sourceproof-api"
+  ],
   "specs": [
     {
       "kind": "openapi",
       "api": "sourceproof-api",
-      "url": "https://raw.githubusercontent.com/frenzoblings57-dot/sourceproof/main/openapi.json",
-      "notes": "Version-addressed repository branch URL for the public OpenAPI contract."
+      "url": "https://raw.githubusercontent.com/frenzoblings57-dot/sourceproof/e9d319a/openapi.json",
+      "notes": "Immutable commit-addressed OpenAPI contract for SourceProof v0.1.1."
     }
   ],
   "access": "public",
   "results": "variable",
   "serving": {
     "backend": "The sourceproof container behind a Pocket HA RelayMiner with the REST backend pointed at port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
-    "implementations": ["sourceproof >= 0.1.1"],
+    "implementations": [
+      "sourceproof >= 0.1.1"
+    ],
     "docs": "https://github.com/frenzoblings57-dot/sourceproof#readme",
     "min_disk_gb": 1,
     "min_ram_gb": 1,
     "healthcheck": [
       {
         "rpc_type": "REST",
-        "request": {"path": "/v1/version", "method": "GET"},
-        "expect": {"json_path": "$.service", "matches": "^sourceproof$"},
+        "request": {
+          "path": "/v1/version",
+          "method": "GET"
+        },
+        "expect": {
+          "json_path": "$.service",
+          "matches": "^sourceproof$"
+        },
         "notes": "Identity probe pins the backend to SourceProof."
       },
       {
         "rpc_type": "REST",
-        "request": {"path": "/health", "method": "GET"},
-        "expect": {"json_path": "$.status", "matches": "^ok$"},
+        "request": {
+          "path": "/health",
+          "method": "GET"
+        },
+        "expect": {
+          "json_path": "$.status",
+          "matches": "^ok$"
+        },
         "notes": "Readiness probe."
       },
       {
         "rpc_type": "REST",
-        "request": {"path": "/v1/verify", "method": "POST", "body": {"claim": "Pocket Network", "sources": ["https://docs.pokt.network/"]}},
-        "expect": {"json_path": "$.verdict", "matches": "^(supported|contradicted|partially_supported|insufficient_evidence)$"},
+        "request": {
+          "path": "/v1/verify",
+          "method": "POST",
+          "body": {
+            "claim": "Pocket Network",
+            "sources": [
+              "https://docs.pokt.network/"
+            ]
+          }
+        },
+        "expect": {
+          "json_path": "$.verdict",
+          "matches": "^(supported|contradicted|partially_supported|insufficient_evidence)$"
+        },
         "notes": "Functional probe: the backend fetched a public page and produced a verdict. Checks the verdict field, not just the service name."
       }
     ],
