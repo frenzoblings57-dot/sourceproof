@@ -2,21 +2,133 @@
   "openapi": "3.0.3",
   "info": {
     "title": "SourceProof",
-    "version": "0.1.0",
-    "description": "Verify a claim against current web sources and return citation snippets and a machine-readable verdict."
+    "version": "0.1.1",
+    "description": "Verify a claim against current web sources and return citation snippets and a machine-readable verdict. Sources are fetched in parallel under one 8 second deadline. A failing source is reported in source_errors with a 200, never a 5xx."
   },
-  "servers": [{"url": "https://{host}", "variables": {"host": {"default": "localhost"}}}],
+  "servers": [
+    {
+      "url": "https://{host}",
+      "variables": {
+        "host": {
+          "default": "localhost"
+        }
+      }
+    }
+  ],
   "paths": {
-    "/health": {"get": {"operationId": "health", "responses": {"200": {"description": "Healthy"}}}},
+    "/": {
+      "get": {
+        "operationId": "root",
+        "responses": {
+          "200": {
+            "description": "Service identity"
+          }
+        }
+      },
+      "head": {
+        "operationId": "rootHead",
+        "responses": {
+          "200": {
+            "description": "Same headers as GET, no body"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "Healthy"
+          }
+        }
+      },
+      "head": {
+        "operationId": "healthHead",
+        "responses": {
+          "200": {
+            "description": "Same headers as GET, no body"
+          }
+        }
+      }
+    },
+    "/v1/version": {
+      "get": {
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "description": "Service identity and version"
+          }
+        }
+      }
+    },
     "/v1/verify": {
       "post": {
         "operationId": "verifyOfficialClaim",
         "summary": "Verify a claim against official or supplied web sources",
-        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyRequest"}}}},
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": {"description": "Verification result", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/VerifyResponse"}}}},
-          "400": {"description": "Invalid request"}
-        }
+          "200": {
+            "description": "Verification result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid_json, invalid_request, or private_or_invalid_url",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "request_timeout: the body was not received in time",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "busy: too many verifications in flight; retry after the Retry-After seconds",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal_error: unexpected server error (should not occur)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Request bodies may use Content-Length or chunked transfer encoding."
       }
     }
   },
@@ -24,26 +136,112 @@
     "schemas": {
       "VerifyRequest": {
         "type": "object",
-        "required": ["claim", "sources"],
+        "required": [
+          "claim",
+          "sources"
+        ],
         "additionalProperties": false,
         "properties": {
-          "claim": {"type": "string", "maxLength": 1000, "description": "The factual claim to check."},
-          "sources": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"type": "string", "format": "uri"}, "description": "HTTP(S) pages to inspect."}
+          "claim": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "The factual claim to check."
+          },
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "HTTP(S) pages to inspect."
+          }
         }
       },
       "VerifyResponse": {
         "type": "object",
-        "required": ["claim", "verdict", "confidence", "evidence"],
+        "required": [
+          "claim",
+          "verdict",
+          "confidence",
+          "evidence"
+        ],
         "properties": {
-          "service": {"type": "string", "example": "SourceProof"},
-          "version": {"type": "string"},
-          "claim": {"type": "string"},
-          "verdict": {"type": "string", "enum": ["supported", "contradicted", "partially_supported", "insufficient_evidence"]},
-          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-          "evidence": {"type": "array", "items": {"type": "object"}},
-          "source_errors": {"type": "array", "items": {"type": "object"}},
-          "retrieved_at": {"type": "string", "format": "date-time"},
-          "method": {"type": "string"}
+          "service": {
+            "type": "string",
+            "example": "SourceProof"
+          },
+          "version": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "contradicted",
+              "partially_supported",
+              "insufficient_evidence"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "source_errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "url",
+                "code",
+                "error"
+              ],
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string",
+                  "description": "unresolvable_host, timeout, connection_failed, blocked_url, unsupported_content_type, fetch_failed, or http_<status>"
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "method": {
+            "type": "string"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
         }
       }
     }

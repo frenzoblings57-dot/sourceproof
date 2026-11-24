@@ -31,7 +31,7 @@ Response:
 ```json
 {
   "service": "SourceProof",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "claim": "Pocket Network is an open network for data services for AI agents",
   "verdict": "supported",
   "confidence": 0.8,
@@ -65,7 +65,7 @@ The result also reports a confidence estimate, matched terms, a short citation s
 
 ### Sources
 
-Sources must be HTTP(S) URLs. Local, private, link-local, multicast, reserved, and credential-bearing URLs are rejected to reduce SSRF risk. A request may include up to 10 sources. Each source is bounded by an 8-second timeout and a 2 MB response limit.
+Sources must be HTTP(S) URLs. Local, private, link-local, multicast, reserved, and credential-bearing URLs are rejected to reduce SSRF risk. A request may include up to 10 sources. Sources are fetched in parallel under one shared 8-second deadline for the whole request, so ten slow sources cost about 8 seconds, not 80. Each page is limited to 2 MB and must be text, HTML, XML, or JSON. Redirects are followed up to 5 hops, and every hop is re-checked. The connection goes to the address that was checked, so DNS rebinding cannot swap in an internal one.
 
 ## Errors
 
@@ -75,9 +75,14 @@ Sources must be HTTP(S) URLs. Local, private, link-local, multicast, reserved, a
 |400 |`invalid_request` |claim or sources are missing, malformed, or outside limits |
 |400 |`private_or_invalid_url` |source URL is not a permitted public HTTP(S) URL |
 |404 |`not_found` |path is not one of the documented operations |
-|502 |`upstream_failure` |a request cannot be completed because of an unexpected upstream failure |
+|405 |`method_not_allowed` |wrong method for the path; the `Allow` header lists the right ones |
+|408 |`request_timeout` |the request body was not received in time |
+|429 |`busy` |too many verifications in flight; retry after the `Retry-After` seconds |
+|500 |`internal_error` |unexpected server error; this should not occur |
 
-A failed individual source is returned in `source_errors` while other valid sources continue to be analyzed.
+A failed individual source never causes a 5xx. It is returned in `source_errors` with a `code` (`unresolvable_host`, `timeout`, `connection_failed`, `blocked_url`, `unsupported_content_type`, `http_<status>`, or `fetch_failed`) while the other sources are still analyzed. A source that points at a private or reserved address is the one exception: the whole request is rejected with 400 `private_or_invalid_url`.
+
+Request bodies may be sent with `Content-Length` or chunked transfer encoding. `HEAD` works on `/`, `/health`, `/v1/version`, and `/openapi.json`. Every response, including protocol errors, is a JSON object.
 
 ## Run and test
 
@@ -105,11 +110,11 @@ The repository also includes [`pocket-ready-proof.json`](./pocket-ready-proof.js
 ## Production
 
 ```shell
-docker build -t sourceproof:0.1.0 .
-docker run --rm -p 8080:8080 sourceproof:0.1.0
+docker build -t sourceproof:0.1.1 .
+docker run --rm -p 8080:8080 sourceproof:0.1.1
 ```
 
-The container uses Python’s standard library and has no runtime dependency on API keys or third-party services. Before production traffic, operators should add external rate limiting, structured request logging with URL privacy controls, and a cache for repeated source pages.
+The container runs as a non-root user, includes a Docker health check against `/health`, and uses Python’s standard library and has no runtime dependency on API keys or third-party services. Before production traffic, operators should add external rate limiting, structured request logging with URL privacy controls, and a cache for repeated source pages.
 
 ## Pocket service
 

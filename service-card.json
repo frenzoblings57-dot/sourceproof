@@ -6,7 +6,7 @@
       "type": "REST",
       "intent": "expected",
       "backend_hint": "SourceProof HTTP server on :8080; mount at /",
-      "notes": "Only GET /, GET /v1/version, GET /health, GET /openapi.json, and POST /v1/verify are expected. Every response is a JSON object."
+      "notes": "Only GET and HEAD on /, GET /v1/version, GET and HEAD on /health, GET and HEAD on /openapi.json, and POST /v1/verify are expected. Every response is a JSON object."
     }
   ],
   "apis": ["sourceproof-api"],
@@ -22,7 +22,7 @@
   "results": "variable",
   "serving": {
     "backend": "The sourceproof container behind a Pocket HA RelayMiner with the REST backend pointed at port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
-    "implementations": ["sourceproof >= 0.1.0"],
+    "implementations": ["sourceproof >= 0.1.1"],
     "docs": "https://github.com/frenzoblings57-dot/sourceproof#readme",
     "min_disk_gb": 1,
     "min_ram_gb": 1,
@@ -42,12 +42,12 @@
       {
         "rpc_type": "REST",
         "request": {"path": "/v1/verify", "method": "POST", "body": {"claim": "Pocket Network", "sources": ["https://docs.pokt.network/"]}},
-        "expect": {"json_path": "$.service", "matches": "^SourceProof$"},
-        "notes": "Cheap functional probe; the source is public and the response includes a JSON verdict."
+        "expect": {"json_path": "$.verdict", "matches": "^(supported|contradicted|partially_supported|insufficient_evidence)$"},
+        "notes": "Functional probe: the backend fetched a public page and produced a verdict. Checks the verdict field, not just the service name."
       }
     ],
-    "notes": "Suppliers should allow the RelayMiner to reach the backend, use a request timeout of at least 15 seconds for upstream page fetches, and apply external rate limiting for public production traffic."
+    "notes": "Suppliers should allow the RelayMiner to reach the backend, set a request timeout of at least 10 seconds (the service enforces an 8 second total deadline per request), run the container as provided (non-root, with its Docker health check), and apply external rate limiting for public production traffic."
   },
   "docs": "https://github.com/frenzoblings57-dot/sourceproof#api",
-  "updated": "2026-11-23"
+  "updated": "2026-11-24"
 }

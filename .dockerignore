@@ -1,0 +1,6 @@
+.git
+__pycache__
+tests
+*.patch
+live-proof.json
+pocket-ready-proof.json
