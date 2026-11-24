@@ -23,7 +23,7 @@
   "access": "public",
   "results": "variable",
   "serving": {
-    "backend": "The sourceproof container behind a Pocket HA RelayMiner with the REST backend pointed at port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
+    "backend": "The supplier-hosted sourceproof container behind a Pocket HA RelayMiner, with the RelayMiner backend_url pointed at the supplier's reachable backend address and port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
     "implementations": [
       "sourceproof >= 0.1.1"
     ],
