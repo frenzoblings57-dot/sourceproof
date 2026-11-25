@@ -1,6 +1,6 @@
 {
   "schema": "pocket-service-card/v1",
-  "description": "SourceProof verifies a factual claim against supplied current web pages. POST JSON to /v1/verify with claim and 1-10 HTTP(S) source URLs; returns a JSON verdict (supported, contradicted, partially_supported, or insufficient_evidence), confidence, citation snippets, retrieval timestamps, and per-source errors. Identical inputs produce deterministic verdict logic, while timestamps and live source content may change.",
+  "description": "SourceProof checks how well supplied web pages support a claim, using keyword matching with citation snippets. It does not establish that a claim is true. POST JSON to /v1/verify with claim and 1-10 HTTP(S) source URLs on ports 80 or 443; returns a support verdict (supported, contradicted, partially_supported, or insufficient_evidence), confidence, citations, retrieval timestamps, and per-source errors. Identical inputs produce deterministic verdict logic, while timestamps and live source content may change.",
   "rpc_types": [
     {
       "type": "REST",
@@ -16,8 +16,8 @@
     {
       "kind": "openapi",
       "api": "sourceproof-api",
-      "url": "https://raw.githubusercontent.com/frenzoblings57-dot/sourceproof/e9d319a/openapi.json",
-      "notes": "Immutable commit-addressed OpenAPI contract for SourceProof v0.1.1."
+      "url": "https://raw.githubusercontent.com/frenzoblings57-dot/sourceproof/v0.1.2/openapi.json",
+      "notes": "OpenAPI contract for SourceProof, addressed by the v0.1.2 release tag."
     }
   ],
   "access": "public",
@@ -25,7 +25,7 @@
   "serving": {
     "backend": "The supplier-hosted sourceproof container behind a Pocket HA RelayMiner, with the RelayMiner backend_url pointed at the supplier's reachable backend address and port 8080. No backend authentication is required; requests are bounded and source URLs are SSRF-checked.",
     "implementations": [
-      "sourceproof >= 0.1.1"
+      "sourceproof >= 0.1.2"
     ],
     "docs": "https://github.com/frenzoblings57-dot/sourceproof#readme",
     "min_disk_gb": 1,
@@ -69,13 +69,13 @@
         },
         "expect": {
           "json_path": "$.verdict",
-          "matches": "^(supported|contradicted|partially_supported|insufficient_evidence)$"
+          "matches": "^supported$"
         },
-        "notes": "Functional probe: the backend fetched a public page and produced a verdict. Checks the verdict field, not just the service name."
+        "notes": "Functional probe: the public source must be fetched and must support the claim. A failed fetch returns insufficient_evidence, which fails this probe."
       }
     ],
-    "notes": "Suppliers should allow the RelayMiner to reach the backend, set a request timeout of at least 10 seconds (the service enforces an 8 second total deadline per request), run the container as provided (non-root, with its Docker health check), and apply external rate limiting for public production traffic."
+    "notes": "Suppliers should allow the RelayMiner to reach the backend, set a request timeout of at least 10 seconds (the service enforces an 8 second total deadline per request), run the container as provided (non-root, with its Docker health check), set SOURCEPROOF_BLOCKED_IPS to the server\u2019s own public IP so callers cannot make it connect back to its host, and apply external rate limiting for public production traffic. Sources are limited to ports 80 and 443."
   },
   "docs": "https://github.com/frenzoblings57-dot/sourceproof#api",
-  "updated": "2026-11-24"
+  "updated": "2026-11-25"
 }

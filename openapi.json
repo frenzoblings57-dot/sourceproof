@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "SourceProof",
-    "version": "0.1.1",
-    "description": "Verify a claim against current web sources and return citation snippets and a machine-readable verdict. Sources are fetched in parallel under one 8 second deadline. A failing source is reported in source_errors with a 200, never a 5xx."
+    "version": "0.1.2",
+    "description": "Checks how well supplied web pages support a claim, using keyword matching, and returns citation snippets and a machine-readable verdict. The verdict measures how much of the claim's wording appears in the sources. It does not establish that the claim is true. Sources must be http or https URLs on ports 80 or 443, and are fetched in parallel under one 8 second deadline. A failing source is reported in source_errors with a 200, never a 5xx."
   },
   "servers": [
     {
@@ -65,7 +65,7 @@
     "/v1/verify": {
       "post": {
         "operationId": "verifyOfficialClaim",
-        "summary": "Verify a claim against official or supplied web sources",
+        "summary": "Check how well supplied web sources support a claim",
         "requestBody": {
           "required": true,
           "content": {
@@ -128,7 +128,7 @@
             }
           }
         },
-        "description": "Request bodies may use Content-Length or chunked transfer encoding."
+        "description": "Keyword-based support check, not fact-checking. Request bodies may use Content-Length or chunked transfer encoding. Source URLs must use ports 80 or 443, including after redirects."
       }
     }
   },

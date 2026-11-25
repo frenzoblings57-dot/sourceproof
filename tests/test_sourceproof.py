@@ -3,11 +3,13 @@ import json
 import os
 import socket
 import sys
+import ssl
 import threading
 import time
 import unittest
 from urllib.error import HTTPError, URLError
 from http.server import ThreadingHTTPServer
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -163,6 +165,234 @@ class SourceProofTests(unittest.TestCase):
             self.assertTrue(sourceproof.is_text_type(ok), ok)
         for bad in ("application/pdf", "image/png", "application/octet-stream"):
             self.assertFalse(sourceproof.is_text_type(bad), bad)
+
+
+class PortAndAddressTests(unittest.TestCase):
+    def test_only_ports_80_and_443_are_accepted(self):
+        for url in ("http://github.com:22/", "https://example.com:8443/", "http://example.com:25/", "http://example.com:8080/x"):
+            with self.subTest(url=url), self.assertRaises(sourceproof.SourceURLError):
+                sourceproof.validate_url_syntax(url)
+        for url in ("http://example.com/", "https://example.com/", "http://example.com:80/", "https://example.com:443/x", "https://example.com:80/"):
+            with self.subTest(url=url):
+                self.assertEqual(sourceproof.validate_url_syntax(url), url)
+
+    def test_invalid_port_is_rejected(self):
+        with self.assertRaises(sourceproof.SourceURLError):
+            sourceproof.validate_url_syntax("http://example.com:99999/")
+
+    def test_connect_time_port_check_runs_before_any_dns(self):
+        for cls in (sourceproof.PinnedHTTPConnection, sourceproof.PinnedHTTPSConnection):
+            conn = cls("github.com", 22, timeout=1)
+            with patch("sourceproof.socket.getaddrinfo", side_effect=AssertionError("DNS must not run")):
+                with self.assertRaises(sourceproof.SourceURLError):
+                    conn.connect()
+
+    def test_redirect_to_a_disallowed_port_is_blocked(self):
+        handler = sourceproof.CheckedRedirectHandler()
+        req = sourceproof.Request("https://example.com/")
+        for target in ("http://github.com:22/", "https://example.com:8443/", "http://example.com:3306/"):
+            with self.subTest(target=target), self.assertRaises(sourceproof.SourceURLError):
+                handler.redirect_request(req, None, 302, "Found", {}, target)
+
+    def test_redirect_to_standard_ports_is_followed(self):
+        handler = sourceproof.CheckedRedirectHandler()
+        req = sourceproof.Request("https://example.com/")
+        new = handler.redirect_request(req, None, 302, "Found", {}, "https://other.example.org/next")
+        self.assertEqual(new.full_url, "https://other.example.org/next")
+
+    def test_blocked_networks_setting(self):
+        nets = sourceproof.parse_blocked_networks("135.181.248.55, 10.9.0.0/16;2001:db8::1")
+        self.assertEqual(len(nets), 3)
+        with patch.object(sourceproof, "BLOCKED_NETWORKS", nets):
+            for ip in ("135.181.248.55", "10.9.4.4", "::ffff:135.181.248.55"):
+                with self.subTest(ip=ip), patch("sourceproof.socket.getaddrinfo", addrinfo(ip)):
+                    with self.assertRaises(sourceproof.SourceURLError):
+                        sourceproof.resolve_public_ips("example.com")
+            with patch("sourceproof.socket.getaddrinfo", addrinfo(PUBLIC_IP)):
+                self.assertEqual(sourceproof.resolve_public_ips("example.com"), [PUBLIC_IP])
+
+    def test_blocked_networks_bad_entry_fails_fast(self):
+        with self.assertRaises(ValueError):
+            sourceproof.parse_blocked_networks("not-an-ip")
+        self.assertEqual(sourceproof.parse_blocked_networks(""), [])
+
+    def test_nat64_and_6to4_are_rejected(self):
+        for ip in ("64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "64:ff9b:1::1", "2002:7f00:1::1"):
+            with self.subTest(ip=ip), patch("sourceproof.socket.getaddrinfo", addrinfo(ip)):
+                with self.assertRaises(sourceproof.SourceURLError):
+                    sourceproof.resolve_public_ips("example.com")
+
+
+class ErrorMessageTests(unittest.TestCase):
+    def test_raw_exception_text_never_leaks(self):
+        secret = "SECRET-/etc/internal 10.0.0.9"
+        for exc in (RuntimeError(secret), OSError(secret), URLError(OSError(secret)), ValueError(secret),
+                    sourceproof.SourceFetchError("unsupported_content_type", secret)):
+            with self.subTest(exc=type(exc).__name__):
+                code, message = sourceproof.error_info(exc)
+                self.assertNotIn("SECRET", message)
+                self.assertNotIn("10.0.0.9", message)
+                self.assertTrue(message)
+
+    def test_http_errors_report_only_the_status(self):
+        code, message = sourceproof.error_info(HTTPError("http://x/secret-path", 503, "Unavailable SECRET", {}, None))
+        self.assertEqual((code, message), ("http_503", "source returned HTTP 503"))
+
+    def test_blocked_redirect_inside_urlerror_is_blocked_url(self):
+        self.assertEqual(sourceproof.error_info(URLError(sourceproof.SourceURLError("x")))[0], "blocked_url")
+
+    @patch("sourceproof.fetch_source", side_effect=RuntimeError("SECRET-internal-detail"))
+    def test_verify_response_has_fixed_messages(self, _fetch):
+        with patch("sourceproof.socket.getaddrinfo", addrinfo(PUBLIC_IP)):
+            result = sourceproof.verify({"claim": "a b", "sources": ["https://example.com/"]})
+        self.assertNotIn("SECRET", json.dumps(result))
+        self.assertEqual(result["source_errors"][0]["error"], sourceproof.ERROR_MESSAGES["fetch_failed"])
+
+
+class SlowServer:
+    """Loopback server that misbehaves on purpose. The SSRF guard is patched open for it."""
+
+    def __init__(self, behaviour):
+        self.behaviour = behaviour
+        self.sock = socket.socket()
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(8)
+        self.port = self.sock.getsockname()[1]
+        self.stop = threading.Event()
+        self.conns = []
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self):
+        self.sock.settimeout(0.2)
+        while not self.stop.is_set():
+            try:
+                conn, _ = self.sock.accept()
+            except OSError:
+                continue
+            self.conns.append(conn)
+            threading.Thread(target=self.handle, args=(conn,), daemon=True).start()
+
+    def handle(self, conn):
+        try:
+            if self.behaviour == "silent":  # accepts and never speaks: a stalled TLS server
+                self.stop.wait(15)
+                return
+            conn.settimeout(3)
+            conn.recv(4096)
+            if self.behaviour == "slow_headers":
+                for byte in b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nhello":
+                    conn.sendall(bytes([byte]))
+                    time.sleep(0.5)
+            elif self.behaviour == "slow_body":
+                conn.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n")
+                for _ in range(40):
+                    conn.sendall(b"x")
+                    time.sleep(0.5)
+        except OSError:
+            pass
+        finally:
+            conn.close()
+
+    def close(self):
+        self.stop.set()
+        self.sock.close()
+        for conn in self.conns:
+            conn.close()
+
+
+class DeadlineEnforcementTests(unittest.TestCase):
+    def fetch(self, behaviour, scheme="http", deadline=1.0):
+        server = SlowServer(behaviour)
+        self.addCleanup(server.close)
+        patches = (
+            patch.object(sourceproof, "ALLOWED_PORTS", {server.port}),
+            patch("sourceproof.resolve_public_ips", return_value=["127.0.0.1"]),
+        )
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        started = time.monotonic()
+        with self.assertRaises(Exception) as ctx:
+            sourceproof.fetch_source(f"{scheme}://127.0.0.1:{server.port}/", time.monotonic() + deadline)
+        return time.monotonic() - started, ctx.exception
+
+    def test_slow_drip_body_is_cut_off_at_the_deadline(self):
+        elapsed, exc = self.fetch("slow_body")  # a full body would take 20s
+        self.assertLess(elapsed, 2.0)
+        self.assertIsInstance(exc, TimeoutError)  # not a truncated "success"
+
+    def test_slow_headers_are_cut_off_at_the_deadline(self):
+        elapsed, exc = self.fetch("slow_headers")  # headers alone would take ~15s
+        self.assertLess(elapsed, 2.0)
+        self.assertIsInstance(exc, TimeoutError)
+
+    def test_stalled_tls_handshake_is_cut_off_at_the_deadline(self):
+        elapsed, exc = self.fetch("silent", scheme="https")
+        self.assertLess(elapsed, 2.0)
+        self.assertIsInstance(exc, TimeoutError)
+
+    def test_a_cut_off_worker_is_freed_for_the_next_request(self):
+        # One worker only: if the slow fetch kept its thread, the next request could not run.
+        server = SlowServer("slow_headers")  # only the reaper can end this one early
+        self.addCleanup(server.close)
+        with patch.object(sourceproof, "POOL", ThreadPoolExecutor(max_workers=1)), \
+                patch.object(sourceproof, "ALLOWED_PORTS", {server.port, 80, 443}), \
+                patch("sourceproof.resolve_public_ips", return_value=["127.0.0.1"]):
+            first = sourceproof.verify({"claim": "a b", "sources": [f"http://127.0.0.1:{server.port}/"]}, deadline_seconds=0.8)
+            self.assertEqual(first["source_errors"][0]["code"], "timeout")
+            fast = {"url": "https://ok.example.com/", "title": "", "text": "claim text", "retrieved_at": "now"}
+            with patch("sourceproof.fetch_source", return_value=fast), patch("sourceproof.socket.getaddrinfo", addrinfo(PUBLIC_IP)), \
+                    patch("sourceproof.resolve_public_ips", return_value=[PUBLIC_IP]):
+                started = time.monotonic()
+                second = sourceproof.verify({"claim": "claim text", "sources": ["https://ok.example.com/"]}, deadline_seconds=1.5)
+            self.assertLess(time.monotonic() - started, 1.2)
+            self.assertEqual(second["verdict"], "supported")
+
+    def test_verify_reports_the_slow_page_as_a_timeout(self):
+        server = SlowServer("slow_body")
+        self.addCleanup(server.close)
+        with patch.object(sourceproof, "ALLOWED_PORTS", {server.port}), \
+                patch("sourceproof.resolve_public_ips", return_value=["127.0.0.1"]):
+            started = time.monotonic()
+            result = sourceproof.verify({"claim": "a b", "sources": [f"http://127.0.0.1:{server.port}/"]}, deadline_seconds=1.0)
+        self.assertLess(time.monotonic() - started, 2.5)
+        self.assertEqual(result["source_errors"][0]["code"], "timeout")
+
+
+class ThreadCapTests(unittest.TestCase):
+    def test_concurrent_fetches_never_exceed_the_pool_cap(self):
+        running, peak, lock = 0, 0, threading.Lock()
+
+        def fake(url, deadline=None):
+            nonlocal running, peak
+            with lock:
+                running += 1
+                peak = max(peak, running)
+            time.sleep(0.15)
+            with lock:
+                running -= 1
+            return {"url": url, "title": "", "text": "claim text", "retrieved_at": "now"}
+
+        urls = [f"https://s{i}.example.com/" for i in range(10)]
+        with patch.object(sourceproof, "POOL", ThreadPoolExecutor(max_workers=3)), \
+                patch("sourceproof.fetch_source", side_effect=fake), patch("sourceproof.socket.getaddrinfo", addrinfo(PUBLIC_IP)):
+            result = sourceproof.verify({"claim": "claim text", "sources": urls}, deadline_seconds=5)
+        self.assertLessEqual(peak, 3)
+        self.assertEqual(len(result["evidence"]), 10)
+
+    def test_saturated_pool_still_returns_by_the_deadline(self):
+        def hang(url, deadline=None):
+            time.sleep(1.5)
+            return {"url": url, "title": "", "text": "claim text", "retrieved_at": "now"}
+
+        urls = [f"https://s{i}.example.com/" for i in range(6)]
+        with patch.object(sourceproof, "POOL", ThreadPoolExecutor(max_workers=1)), \
+                patch("sourceproof.fetch_source", side_effect=hang), patch("sourceproof.socket.getaddrinfo", addrinfo(PUBLIC_IP)):
+            started = time.monotonic()
+            result = sourceproof.verify({"claim": "claim text", "sources": urls}, deadline_seconds=0.5)
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertEqual(len(result["source_errors"]), 6)
+        self.assertTrue(all(e["code"] == "timeout" for e in result["source_errors"]))
 
 
 class HttpContractTests(unittest.TestCase):
